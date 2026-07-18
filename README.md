@@ -126,22 +126,15 @@ No real theater photo was provided as part of the assessment. `generate_test_ima
 
 ---
 
-## Known Limitations
-
-| Limitation | Impact |
-|---|---|
-| Threshold + contour detection assumes seats are visually distinct from the background | May not generalize to cluttered or low-contrast real-world photos |
-| No perspective correction | Assumes a roughly frontal or top-down camera angle |
-| Classification is heuristic-based, not learned | Less robust to lighting variation, occlusion, and unusual seat/clothing colors than a trained classifier |
 
 ## Recommended Next Steps (Production Hardening)
 
-| Improvement | Approach | Est. Effort |
-|---|---|---|
-| Robust seat detection | Fine-tune a YOLOv8 object detector on labeled real seat images | 1-2 days (data labeling is the bottleneck) |
-| Learned occupancy classifier | Fine-tune a lightweight CNN (e.g. MobileNetV2) on labeled seat crops | 4-8 hours, given labeled data |
-| Perspective correction | Homography transform using reference corner points | 2-4 hours |
-| Robustness to occlusion/lighting | Iterative improvement with more diverse training data | Ongoing |
+| Area | Improvement |
+|---|---|
+| Seat detection | Replace threshold + contour detection with a trained object detector (e.g. YOLOv8) fine-tuned on real, labeled seat images for robustness across venues and camera angles |
+| Occupancy classification | Replace the color/variance heuristic with a learned binary classifier (e.g. a fine-tuned lightweight CNN) trained on labeled occupied/unoccupied seat crops |
+| Camera angle handling | Add perspective correction (homography transform) to support angled or wide-angle camera placements, not just frontal/top-down views |
+| Robustness | Expand training data to cover varied lighting, partial occlusion, and diverse seat/clothing appearances |
 
 ---
 
