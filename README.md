@@ -1,49 +1,149 @@
 # Theater Seat Occupancy Detection
 
-## Approach
-1. **Seat detection**: Since no real theater photo was provided, a synthetic 10x10
-   (100-seat) test image is generated (`generate_test_image.py`) that mimics a
-   top-down/frontal theater seating view — seat-colored regions on a dark background,
-   with occupied seats showing a simple person-shaped overlay.
-   Seats are detected using classical CV: grayscale threshold to separate
-   seat-colored regions from background, then contour detection + bounding-box
-   area filtering to isolate seat-sized blobs. This is a deliberate choice over
-   a trained detector (e.g. YOLO) given the time constraint and lack of labeled
-   real-world training data — it's explainable and works well for a fixed-layout
-   seating grid, which is realistic for a theater.
+A computer vision pipeline that detects individual seats in a theater image and classifies each as **Occupied** or **Unoccupied**, producing an aggregate occupancy count.
 
-2. **Occupancy classification**: Each detected seat region is classified using
-   two signals: (a) hue-channel standard deviation (empty seats are near-uniform
-   fabric color; occupied seats have more visual variance from a person), and
-   (b) skin/clothing-tone pixel ratio within the region. This is a lightweight,
-   trainable-free heuristic. In production with labeled data, this would be
-   replaced by a small CNN classifier (e.g. MobileNetV2 fine-tuned on cropped
-   seat patches) for robustness to lighting/occlusion variation.
+---
 
-3. **Output**: total/occupied/unoccupied counts, an annotated image
-   (green = unoccupied, red = occupied), and a `seat_results.json` with
-   per-seat bounding boxes and classifications.
+## Overview
 
-## Files
-- `generate_test_image.py` — creates the synthetic test input + ground truth
-- `seat_occupancy.py` — core detection + classification pipeline (CLI runnable)
-- `app.py` — Streamlit UI for uploading an image and viewing results
-- `theater_input.png` — sample test image
-- `annotated_output.png` — sample output
+| | |
+|---|---|
+| **Input** | Theater seating image (100 seats) |
+| **Output** | Total / Occupied / Unoccupied seat counts, annotated image, structured JSON results |
+| **Tech Stack** | Python, OpenCV, NumPy, Streamlit |
+| **Runtime** | < 1 second per image (CPU) |
 
-## How to run
+---
+
+## Problem Statement
+
+Given an image of a theater containing 100 seats, detect each seat and classify its occupancy status, then report:
+
 ```
-python3 generate_test_image.py      # creates sample input
+Total Seats      : 100
+Occupied Seats   : 68
+Unoccupied Seats : 32
+```
+
+---
+
+## Architecture
+
+```
+                 ┌─────────────────────┐
+   Input Image ─▶│   Seat Detection    │  Grayscale threshold + contour
+                 │                     │  detection, filtered by seat-
+                 └──────────┬──────────┘  sized bounding box area
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │ Occupancy           │  Per-seat crop analysis:
+                 │ Classification      │  hue variance + skin/clothing
+                 │                     │  tone ratio
+                 └──────────┬──────────┘
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │  Aggregation &      │  Counts, annotated image,
+                 │  Reporting          │  JSON export
+                 └─────────────────────┘
+```
+
+### 1. Seat Detection
+Seats are localized using classical image processing:
+1. Convert image to grayscale.
+2. Apply binary thresholding to separate seat-colored regions from the (darker) background.
+3. Run contour detection on the thresholded mask.
+4. Filter contours by bounding-box area to retain seat-sized regions and discard noise.
+
+### 2. Occupancy Classification
+Each detected seat region is cropped and evaluated on two signals:
+
+| Signal | Rationale |
+|---|---|
+| Hue-channel standard deviation | An empty seat is a near-uniform fabric color; an occupied seat has higher color variance due to the presence of a person. |
+| Skin/clothing-tone pixel ratio | Presence of skin or clothing tones within the seat crop indicates occupancy. |
+
+A seat is classified **Occupied** if either signal exceeds its threshold.
+
+### 3. Output
+- Console summary (total / occupied / unoccupied)
+- Annotated image — green box = unoccupied, red box = occupied
+- `seat_results.json` — per-seat bounding box and classification, for downstream use
+
+---
+
+## Project Structure
+
+```
+theater-seat-detection/
+├── app.py                     # Streamlit UI
+├── seat_occupancy.py          # Core detection + classification pipeline
+├── generate_test_image.py     # Synthetic test image generator (see Note on Data)
+├── theater_input.png          # Sample input image
+├── annotated_output.png       # Sample output image
+├── ground_truth.json          # Ground-truth labels for the sample image
+├── seat_results.json          # Pipeline output for the sample image
+└── README.md
+```
+
+---
+
+## Setup
+
+**Requirements:** Python 3.9+
+
+```bash
+pip install opencv-python-headless numpy pillow streamlit
+```
+
+## Usage
+
+### Run via CLI
+```bash
+python3 generate_test_image.py            # generates a sample input image
 python3 seat_occupancy.py theater_input.png
-# or, for the UI:
+```
+
+Output:
+```
+Total Seats      : 100
+Occupied Seats   : 65
+Unoccupied Seats : 35
+```
+
+### Run via UI
+```bash
 streamlit run app.py
 ```
+Upload a theater seating image and view detection results, side-by-side comparison, and live counts in the browser.
 
-## Limitations & what I'd do with more time
-- Detection assumes seats are visually distinct from the background and roughly
-  seat-sized; a real photo (angled, varied lighting, occlusion) would need a
-  trained object detector (YOLOv8 fine-tuned on seat crops) rather than
-  threshold + contour detection.
-- Classification heuristic is color/variance-based; a trained binary classifier
-  on real seat-crop images (occupied vs unoccupied) would generalize far better.
-- No perspective correction — assumes a roughly frontal/top-down camera angle.
+---
+
+## Note on Test Data
+
+No real theater photo was provided as part of the assessment. `generate_test_image.py` procedurally generates a representative 10x10 seat grid image (seat-colored regions on a dark background, with occupied seats showing a simplified person silhouette) so the pipeline can be developed and validated end-to-end. The same pipeline accepts any real theater image as input via the CLI or UI upload.
+
+---
+
+## Known Limitations
+
+| Limitation | Impact |
+|---|---|
+| Threshold + contour detection assumes seats are visually distinct from the background | May not generalize to cluttered or low-contrast real-world photos |
+| No perspective correction | Assumes a roughly frontal or top-down camera angle |
+| Classification is heuristic-based, not learned | Less robust to lighting variation, occlusion, and unusual seat/clothing colors than a trained classifier |
+
+## Recommended Next Steps (Production Hardening)
+
+| Improvement | Approach | Est. Effort |
+|---|---|---|
+| Robust seat detection | Fine-tune a YOLOv8 object detector on labeled real seat images | 1-2 days (data labeling is the bottleneck) |
+| Learned occupancy classifier | Fine-tune a lightweight CNN (e.g. MobileNetV2) on labeled seat crops | 4-8 hours, given labeled data |
+| Perspective correction | Homography transform using reference corner points | 2-4 hours |
+| Robustness to occlusion/lighting | Iterative improvement with more diverse training data | Ongoing |
+
+---
+
+## Author
+Sowmiya
